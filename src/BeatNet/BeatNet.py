@@ -59,8 +59,8 @@ class BeatNet:
             raise RuntimeError('Plotting cannot be accomplished in the threading mode')
         self.sample_rate = 22050
         self.log_spec_sample_rate = self.sample_rate
-        self.log_spec_hop_length = int(20 * 0.001 * self.log_spec_sample_rate)
-        self.log_spec_win_length = int(64 * 0.001 * self.log_spec_sample_rate)
+        self.log_spec_hop_length = int(20 * 0.001 * self.log_spec_sample_rate) #20ms hop size
+        self.log_spec_win_length = int(64 * 0.001 * self.log_spec_sample_rate) #64ms window size
         self.proc = LOG_SPECT(sample_rate=self.log_spec_sample_rate, win_length=self.log_spec_win_length,
                              hop_size=self.log_spec_hop_length, n_bands=[24], mode = self.mode)
         if self.inference_model == "PF":                 # instantiating a Particle Filter decoder - Is Chosen for online inference
@@ -102,6 +102,7 @@ class BeatNet:
                     x.start()
                     x.join()    
                 else:
+                    # pred: [beat prob, downbeat prob] for each frame (hop)
                     output = self.estimator.process(self.pred)
                 self.counter += 1
 
@@ -120,7 +121,7 @@ class BeatNet:
                         x.join()    
                     else:
                         output = self.estimator.process(self.pred)  # Using particle filtering online inference to infer beat/downbeats
-                    self.counter += 1
+                    self.counter += 1 # = 50 * sec (len(self.audio)/int(20 * 0.001 * self.log_spec_sample_rate))
                 return output
             else:
                 raise RuntimeError('An audio object or file directory is required for the realtime usage!')
@@ -140,12 +141,22 @@ class BeatNet:
         
         
         elif self.mode == "offline":
-                if self.inference_model != "DBN":
-                    raise RuntimeError('The infernece model should be set to "DBN" for the offline mode!')
+                #if self.inference_model != "DBN":
+                    #raise RuntimeError('The infernece model should be set to "DBN" for the offline mode!')
                 if isinstance(audio_path, str) or audio_path.all()!=None:
                     preds = self.activation_extractor_online(audio_path)    # Using BeatNet causal Neural network to extract activations
+                    '''
                     output = self.estimator(preds)  # Using DBN offline inference to infer beat/downbeats
                     return output
+                    '''
+
+                    #Allowed Particle filtering in offline mode to compare performance of modes
+                    if self.inference_model == "PF":   # Particle filtering inference (causal)
+                        output = self.estimator.process(preds)  # Using particle filtering online inference to infer beat/downbeats
+                        return output
+                    elif self.inference_model == "DBN":    # Dynamic bayesian Network Inference (non-causal)
+                        output = self.estimator(preds)  # Using DBN offline inference to infer beat/downbeats
+                        return output
         
                 else:
                     raise RuntimeError('An audio object or file directory is required for the offline usage!')
